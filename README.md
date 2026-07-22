@@ -12,13 +12,14 @@ We publish them here for the broader IT community.
 
 ## Available Tools
 
-### [BriComp Device Manager](shared/utils/bc-device-manager/)
+### [BriComp Device Manager](https://github.com/bricomp-it/bricomp-public/blob/main/shared/utils/bc-device-manager)
 
 A WPF GUI tool for managing Windows devices in bulk. Designed for IT admins
 and MSP consultants who need to run remote actions across multiple endpoints
 quickly — without writing scripts for every task.
 
 **Key features:**
+
 - Pre-validate WinRM reachability (Ping / WinRM port / WMI auth) across all targets
 - BitLocker status check and bulk disable
 - Force reboot with confirmation dialog
@@ -31,7 +32,43 @@ quickly — without writing scripts for every task.
 
 **Requirements:** PowerShell 7+, Windows, run as Administrator
 
-**[Full documentation and usage guide](shared/utils/bc-device-manager/README.md)**
+**[Full documentation and usage guide](https://github.com/bricomp-it/bricomp-public/blob/main/shared/utils/bc-device-manager/README.md)**
+
+---
+
+### [Get-BCUserSignInLogs](https://github.com/bricomp-it/bricomp-public/blob/main/shared/m365/Get-BCUserSignInLogs)
+
+Queries Entra ID sign-in logs via Microsoft Graph (beta endpoint) for a
+specified user and time window. Accepts local time input and converts to
+UTC automatically, so you don't have to do the math during an investigation.
+
+**Key features:**
+
+- Uses `Get-MgBetaAuditLogSignIn` — the beta endpoint is required for
+  `signInEventTypes` filtering on non-interactive sign-ins
+- `-SuccessOnly` / `-FailuresOnly` switches (mutually exclusive) to narrow results
+- CSV export, auto-named to the working directory by default
+- Installs required Graph module at runtime if missing
+
+**Requirements:** PowerShell 5.1+, Microsoft.Graph.Beta module, **[NEED: confirm required Graph scope, e.g. AuditLog.Read.All]**
+
+---
+
+### [Invoke-BCDirectoryObjectMapper](https://github.com/bricomp-it/bricomp-public/blob/main/shared/utils/Invoke-BCDirectoryObjectMapper)
+
+Correlates and maps device and user Object IDs between on-premises Active
+Directory and Entra ID. Built for hybrid-join environments where tracing a
+single identity across both directories otherwise means several manual
+lookups.
+
+**Key features:**
+
+- Devices mode and Users mode
+- Source/Target AD + Entra lookups
+- Confirmation prompt before clearing results on mode switch
+- Prompts to install RSAT if the AD module isn't present
+
+**Requirements:** **[NEED: confirm PowerShell version and exact module dependencies — RSAT ActiveDirectory module, and which Graph/AzureAD module for the Entra side]**
 
 ---
 
@@ -41,7 +78,7 @@ quickly — without writing scripts for every task.
 
 Click any `.ps1` file, then click the **Raw** button and save, or clone the repo:
 
-```powershell
+```
 git clone https://github.com/bricomp-it/bricomp-public.git
 ```
 
@@ -53,7 +90,7 @@ git clone https://github.com/bricomp-it/bricomp-public.git
 
 Or from a PS7 prompt:
 
-```powershell
+```
 pwsh -File .\Invoke-BCDeviceManager.ps1
 pwsh -File .\Invoke-BCDeviceManager.ps1 -CsvPath .\computers.csv -DnsSuffix corp.local
 ```
@@ -67,7 +104,7 @@ code signing certificate (DigiCert Trusted G4, expires 2028-08-10).
 
 To verify a signature before running:
 
-```powershell
+```
 Get-AuthenticodeSignature .\Invoke-BCDeviceManager.ps1 | Select-Object Status, SignerCertificate
 ```
 
@@ -77,8 +114,7 @@ Expected output: `Status: Valid` signed by `CN="BriComp Computers, LLC"`.
 
 ## License
 
-All scripts in this repository are released under the **MIT License** — see
-[LICENSE](LICENSE) for details. You are free to use, modify, and distribute
+All scripts in this repository are released under the **MIT License** — see [LICENSE](https://github.com/bricomp-it/bricomp-public/blob/main/LICENSE) for details. You are free to use, modify, and distribute
 these scripts in your own environments.
 
 ---
@@ -95,9 +131,7 @@ firm based in Gilbert, Arizona. We specialize in:
 - Palo Alto / Panorama network security
 - PowerShell automation and tooling
 
-**Website**: [bricomp.com](https://bricomp.com)
-**Contact**: support@bricomp.com
-**GitHub**: [github.com/bricomp-it](https://github.com/bricomp-it)
+**Website**: [bricomp.com](https://bricomp.com) **Contact**: <support@bricomp.com> **GitHub**: [github.com/bricomp-it](https://github.com/bricomp-it)
 
 ---
 
