@@ -50,7 +50,11 @@ UTC automatically, so you don't have to do the math during an investigation.
 - CSV export, auto-named to the working directory by default
 - Installs required Graph module at runtime if missing
 
-**Requirements:** PowerShell 5.1+, Microsoft.Graph.Beta module, **[NEED: confirm required Graph scope, e.g. AuditLog.Read.All]**
+**Requirements:** PowerShell 5.1+, Microsoft.Graph.Beta module, and a
+Microsoft Graph permission that grants sign-in log read access (e.g.
+`AuditLog.Read.All`)
+
+**[Full documentation and usage guide](https://github.com/bricomp-it/bricomp-public/blob/main/shared/m365/Get-BCUserSignInLogs/README.md)**
 
 ---
 
@@ -68,7 +72,11 @@ lookups.
 - Confirmation prompt before clearing results on mode switch
 - Prompts to install RSAT if the AD module isn't present
 
-**Requirements:** **[NEED: confirm PowerShell version and exact module dependencies — RSAT ActiveDirectory module, and which Graph/AzureAD module for the Entra side]**
+**Requirements:** RSAT Active Directory PowerShell module (prompts to
+install if missing), plus a Microsoft Graph or Azure AD PowerShell module
+for the Entra ID side
+
+**[Full documentation and usage guide](https://github.com/bricomp-it/bricomp-public/blob/main/shared/utils/Invoke-BCDirectoryObjectMapper/README.md)**
 
 ---
 
