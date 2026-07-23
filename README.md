@@ -80,6 +80,29 @@ for the Entra ID side
 
 ---
 
+### [Clear-BCOneNoteCache](https://github.com/bricomp-it/bricomp-public/blob/main/shared/utils/Clear-BCOneNoteCache)
+
+Clears stale local cache folders for the Microsoft OneNote desktop app to
+resolve freezing, keystroke lag, and sync thrash issues. Notebooks stored
+in OneDrive or SharePoint are unaffected — OneNote re-syncs everything from
+the cloud on next launch.
+
+**Key features:**
+
+- Clears `cache\`, `FullTextSearchIndex\`, `MasterIndex\`, and `ServerListings\`
+  — all rebuilt automatically by OneNote on next launch
+- Preserves `Backup\` (local section backups)
+- Auto-detects the logged-on user when run as SYSTEM (RMM/SCCM/Intune),
+  or accepts an explicit `-Username`
+- `-Relaunch` to reopen OneNote after clearing; `-WhatIf` for a dry run
+
+**Requirements:** PowerShell 5.1+, Microsoft OneNote desktop (M365 Apps /
+Office 2016+, build `16.0`) — not applicable to the OneNote UWP (Store) app
+
+**[Full documentation and usage guide](https://github.com/bricomp-it/bricomp-public/blob/main/shared/utils/Clear-BCOneNoteCache/README.md)**
+
+---
+
 ## Usage
 
 ### Download a script
