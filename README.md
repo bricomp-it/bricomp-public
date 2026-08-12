@@ -103,6 +103,31 @@ Office 2016+, build `16.0`) — not applicable to the OneNote UWP (Store) app
 
 ---
 
+### [Export-BCUserGroupMembership](https://github.com/bricomp-it/bricomp-public/blob/main/shared/ad/Export-BCUserGroupMembership)
+
+Exports Active Directory user accounts and group memberships to CSV. A
+scriptable, parameterized replacement for the DumpSec "Dump Users as Table"
+function — useful for access control audits, compliance reporting, and
+baseline documentation.
+
+**Key features:**
+
+- **PerRow** format (default) — one row per group membership, ideal for
+  filtering and pivot analysis in Excel
+- **Joined** format — one row per user with all group names delimited by
+  semicolons, matching the classic DumpSec layout
+- `-SecurityGroupsOnly` switch to exclude distribution lists from output
+- Group name cache built before user enumeration — significantly faster
+  than per-membership AD lookups on large domains
+- Accounts with no expiration date report as `Never` rather than blank
+
+**Requirements:** PowerShell 5.1+, Active Directory module
+(`RSAT-AD-PowerShell`), read access to the target domain
+
+**[Full documentation and usage guide](https://github.com/bricomp-it/bricomp-public/blob/main/shared/ad/Export-BCUserGroupMembership/README.md)**
+
+---
+
 ## Usage
 
 ### Download a script
