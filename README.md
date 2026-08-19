@@ -128,6 +128,33 @@ baseline documentation.
 
 ---
 
+### [Add-BCMailboxDomainAlias](https://github.com/bricomp-it/bricomp-public/blob/main/shared/exchange/Add-BCMailboxDomainAlias)
+
+Adds a domain-based SMTP alias to Exchange recipients that have automatic
+email address policy management turned off, built from each recipient's
+own Exchange Alias attribute. Checks both on-premises mailboxes and hybrid
+remote mailboxes by default, so nothing gets missed in a hybrid deployment.
+
+**Key features:**
+
+- Checks both `Get-Mailbox` (on-premises) and `Get-RemoteMailbox` (hybrid)
+  — skips a source with a warning instead of failing if a cmdlet isn't available
+- Idempotent — safe to re-run; recipients that already have the target
+  address are skipped and logged as `NoChangeNeeded`
+- Full `-WhatIf`/`-Confirm` support, with a summary that reconciles
+  (Attempted = Changed + Would change + No change needed + Failed)
+- Per-recipient error handling — one failure doesn't stop the batch
+- Transcript logging on every run, including dry runs
+- `-PassThru` for exporting full per-recipient results to CSV
+
+**Requirements:** Exchange Management Shell session (on-premises Exchange
+Server, including Exchange Server SE); at least one of `Get-Mailbox` or
+`Get-RemoteMailbox` must be available
+
+**[Full documentation and usage guide](https://github.com/bricomp-it/bricomp-public/blob/main/shared/exchange/Add-BCMailboxDomainAlias/README.md)**
+
+---
+
 ## Usage
 
 ### Download a script
