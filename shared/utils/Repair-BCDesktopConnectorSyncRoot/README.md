@@ -32,7 +32,7 @@ Sign-in, token refresh and cloud API calls all succeed in the log. The failure i
 
 - PowerShell 5.1 or later
 - Windows 10 or Windows 11
-- Must run **elevated** — the repair modifies `HKLM`
+- Must run **elevated** — the repair modifies `HKLM`. This is enforced by `#Requires -RunAsAdministrator`, so PowerShell refuses to start the script in a non-elevated session.
 - Autodesk Desktop Connector installed (the script exits cleanly if it is not)
 
 ---
