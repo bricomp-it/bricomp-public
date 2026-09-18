@@ -1,6 +1,6 @@
 # Repair-BCDesktopConnectorSyncRoot
 
-**Version:** 1.0.0  
+**Version:** 1.1.3  
 **Author:** BriComp IT Consulting Services — [bricomp.com](https://bricomp.com)
 
 Repairs Autodesk Desktop Connector "Unable to register drive" startup failures caused by orphaned Windows Cloud Files API sync root registrations — the failure mode left behind when a machine's user SID changes, such as an Entra-joined device migrated to on-premises Active Directory.
@@ -67,7 +67,8 @@ Only keys beginning with `DesktopConnector!` are ever touched. OneDrive and ever
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `-DryRun` | Switch | No | Report what would be removed and exit. No changes, no restart. |
+| `-WhatIf` | Switch | No | Report what would be removed and exit. No changes, no restart. |
+| `-Confirm` | Switch | No | Prompt before each removal and before the restart. A plain run never prompts. |
 | `-NoRestart` | Switch | No | Apply the repair but leave the restart to you. The repair does not take effect until the machine restarts. |
 | `-RestartDelaySeconds` | Int | No | Seconds before the restart. Default `120`. |
 | `-LogPath` | String | No | Override the log and backup directory. Default `C:\ProgramData\BriComp\DCSyncRootFix`. |
@@ -79,7 +80,7 @@ Only keys beginning with `DesktopConnector!` are ever touched. OneDrive and ever
 ### Preview first — always do this on a new environment
 
 ```powershell
-.\Repair-BCDesktopConnectorSyncRoot.ps1 -DryRun
+.\Repair-BCDesktopConnectorSyncRoot.ps1 -WhatIf
 ```
 
 ### Repair and restart
@@ -100,9 +101,11 @@ Keep `Run-Repair.cmd` in the same folder as the script. The operator right-click
 
 ```
 Run-Repair.cmd              Repair and restart
-Run-Repair.cmd /dryrun      Preview only
+Run-Repair.cmd /whatif      Preview only
 Run-Repair.cmd /norestart   Repair, no restart
 ```
+
+A plain double-click works the same as running it with no arguments — the launcher requests elevation, runs the repair in an elevated window, and pauses so the result stays on screen.
 
 > **Note:** the launcher calls PowerShell with `-ExecutionPolicy Bypass` so a freshly downloaded copy runs without prompting an operator who cannot answer a trust prompt. The script is Authenticode-signed, so if your environment prefers signature enforcement, change `Bypass` to `RemoteSigned` or `AllSigned` in the launcher.
 
@@ -122,6 +125,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Repair-BCDesktopConnect
 | `1` | Error — collect the log |
 | `2` | Not running elevated |
 | `3` | Changes applied — restart pending or underway |
+| `4` | `-WhatIf` only — the repair **is** needed, but nothing was changed |
+| `5` | *(launcher only)* Script execution is locked down by Group Policy — see below |
 
 The script writes to `HKLM` and to every loaded user hive, so it works correctly when invoked as SYSTEM as well as in an elevated user session.
 
@@ -145,6 +150,55 @@ To roll back, run the `.reg` backup for that machine and restart.
 Have the user sign in and launch Desktop Connector — it should stay in the tray. They will need to re-add their project subscriptions.
 
 No cached file data is lost. On an affected machine there is none to lose, because Desktop Connector never successfully mounted the drive in the first place.
+
+---
+
+## Signature and Execution Policy
+
+The script is Authenticode-signed with the BriComp Computers, LLC code signing certificate (DigiCert). Verify before running:
+
+```powershell
+Get-AuthenticodeSignature .\Repair-BCDesktopConnectorSyncRoot.ps1 | Select-Object Status, SignerCertificate
+```
+
+Expect `Valid`, signed by `CN="BriComp Computers, LLC"`.
+
+### "Do you want to run software from this untrusted publisher?"
+
+If you run the script under the `AllSigned` execution policy you may see that prompt. **It does not mean the signature is bad.** Windows uses two separate certificate stores:
+
+| Store | Question it answers | Default |
+|---|---|---|
+| Trusted Root Certification Authorities | Is the issuing CA legitimate? | DigiCert is present by default |
+| Trusted Publishers | Has this specific publisher been approved to run code without asking? | Empty |
+
+A valid signature satisfies the first. The prompt is the second — this machine has not been told to trust BriComp as a publisher, which is the default state everywhere and exactly what that prompt is for. Choosing **Run once** runs it now; **Always run** adds the certificate to the current user's Trusted Publishers store so the prompt does not return.
+
+To make it silent across a fleet, an administrator can add the public certificate (no private key involved) to Trusted Publishers:
+
+```powershell
+$sig = Get-AuthenticodeSignature .\Repair-BCDesktopConnectorSyncRoot.ps1
+Export-Certificate -Cert $sig.SignerCertificate -FilePath .\BriComp-CodeSigning.cer
+
+# Elevated, on each target machine - or via Group Policy / Intune
+Import-Certificate -FilePath .\BriComp-CodeSigning.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
+```
+
+That is a deliberate decision for whoever owns the environment. This tool will never make it for you — a script that installs its own publisher certificate is self-authorizing, which defeats the point of signature enforcement entirely.
+
+### Group Policy environments
+
+`Run-Repair.cmd` invokes PowerShell with `-ExecutionPolicy Bypass` so a downloaded copy runs without prompting an operator who cannot evaluate a trust decision. That switch sets the policy for that one process only and changes nothing on the machine.
+
+**It does not work where execution policy is set by Group Policy.** Per Microsoft, the *Turn on Script Execution* policy setting overrides execution policies set in PowerShell in all scopes, including the command-line switch. In that environment the certificate must be in Trusted Publishers before the script can run at all.
+
+The launcher checks for this before doing anything, and exits with code `5` and a plain-language message rather than a confusing failure. To check a machine yourself:
+
+```powershell
+Get-ExecutionPolicy -List
+```
+
+If `MachinePolicy` or `UserPolicy` is anything other than `Undefined`, policy is enforced by Group Policy.
 
 ---
 

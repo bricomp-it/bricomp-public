@@ -50,8 +50,10 @@
 
     On a healthy machine the script makes no changes and does not restart.
 
-.PARAMETER DryRun
+.PARAMETER WhatIf
     Report what would be removed and make no changes. No restart. Run this first.
+    Exits 4 when the repair is needed, 0 when it is not, so it doubles as an
+    RMM detection rule paired with a plain run as the remediation.
 
 .PARAMETER NoRestart
     Apply the repair but do not restart. The repair does not take effect until the
@@ -66,7 +68,7 @@
     Default C:\ProgramData\BriComp\DCSyncRootFix
 
 .EXAMPLE
-    .\Repair-BCDesktopConnectorSyncRoot.ps1 -DryRun
+    .\Repair-BCDesktopConnectorSyncRoot.ps1 -WhatIf
 
     Reports what would be removed and exits. Makes no changes.
 
@@ -81,10 +83,26 @@
     Repairs the machine and leaves the restart to you or your RMM.
 
 .NOTES
-    Version:    1.0.0
+    Version:    1.1.3
     Author:     BriComp IT Consulting Services
     Website:    https://bricomp.com
     Created:    2026-09-17
+    Updated:    2026-09-18 - 1.1.3: version aligned across the tool folder after
+                launcher fixes (empty -ArgumentList on the no-argument elevation
+                path, Group Policy pre-check). No change to this script's logic.
+                2026-09-18 - 1.1.1: log writes use .NET file APIs so -WhatIf no
+                longer suppresses the log file (or floods the console with "What if:"
+                lines for every entry), and -Confirm does not prompt per line.
+                2026-09-18 - 1.1.0: -DryRun replaced by the standard -WhatIf
+                via SupportsShouldProcess, matching Clear-BCOneNoteCache and
+                PowerShell convention. -Confirm is now supported too. Default
+                ConfirmImpact is Medium, so a plain run never prompts.
+                2026-09-18 - 1.0.2: a dry run that finds work now exits 4, not 0,
+                so the launcher stops reporting "this computer is fine" when the
+                repair is actually needed.
+                2026-09-18 - 1.0.1: registry value reads are now strict-mode
+                safe. 1.0.0 threw PropertyNotFoundStrict on any machine whose
+                Uninstall keys included a subkey with no DisplayName.
 
     Must be run elevated. Safe to run against healthy machines - they are no-ops.
 
@@ -93,14 +111,14 @@
         1   Error
         2   Not running elevated
         3   Changes applied - restart pending or underway
+        4   Dry run only - the repair IS needed, nothing was changed
 
     Verified against Desktop Connector 2027.2.2.3 on Windows 11 23H2, on a device
     migrated from Entra join to on-premises Active Directory.
 #>
 
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess)]
 param(
-    [switch] $DryRun,
     [switch] $NoRestart,
     [int]    $RestartDelaySeconds = 120,
     [string] $LogPath = 'C:\ProgramData\BriComp\DCSyncRootFix'
@@ -135,19 +153,42 @@ function Write-Log {
         'SKIP'   { Write-Host $line -ForegroundColor DarkGray }
         default  { Write-Host $line }
     }
-    try { Add-Content -LiteralPath $script:LogFile -Value $line -Encoding UTF8 } catch { }
+    # .NET rather than Add-Content on purpose: writing the log is not an operation
+    # -WhatIf should suppress or -Confirm should prompt for. Add-Content honours both,
+    # which silently produced no log file at all during a -WhatIf run.
+    try { [IO.File]::AppendAllText($script:LogFile, $line + [Environment]::NewLine) } catch { }
+}
+
+#--------------------------------------------------------------------------------------
+# Registry helpers
+#--------------------------------------------------------------------------------------
+function Get-RegValue {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Name
+    )
+    # Strict-mode safe. Set-StrictMode -Version 2.0 throws PropertyNotFoundStrict when
+    # a property is missing, and most registry keys do not carry every value we look for
+    # (an Uninstall subkey with no DisplayName, for example). Return $null instead.
+    try {
+        $item = Get-ItemProperty -LiteralPath $Path -ErrorAction Stop
+    } catch {
+        return $null
+    }
+    if ($item -and ($item.PSObject.Properties.Name -contains $Name)) { return $item.$Name }
+    return $null
 }
 
 #--------------------------------------------------------------------------------------
 # Preflight
 #--------------------------------------------------------------------------------------
-try { New-Item -Path $LogPath -ItemType Directory -Force | Out-Null } catch { }
+try { [void][IO.Directory]::CreateDirectory($LogPath) } catch { }
 
 Write-Log "=============================================================="
 Write-Log "Desktop Connector sync root repair"
 Write-Log ("Computer : {0}" -f $env:COMPUTERNAME)
 Write-Log ("Running as: {0}\{1}" -f $env:USERDOMAIN, $env:USERNAME)
-Write-Log ("Mode      : {0}" -f $(if ($DryRun) { 'DRY RUN - no changes' } else { 'REMEDIATE' }))
+Write-Log ("Mode      : {0}" -f $(if ($WhatIfPreference) { 'WHAT IF - no changes' } else { 'REMEDIATE' }))
 Write-Log ("Log file  : {0}" -f $script:LogFile)
 Write-Log "=============================================================="
 
@@ -165,7 +206,7 @@ foreach ($root in @(
     'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
     if (Test-Path -LiteralPath $root) {
         $hit = Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue |
-               ForEach-Object { (Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue).DisplayName } |
+               ForEach-Object { Get-RegValue -Path $_.PSPath -Name 'DisplayName' } |
                Where-Object { $_ -like '*Desktop Connector*' }
         if ($hit) { $dcInstalled = $true; break }
     }
@@ -191,7 +232,7 @@ $knownSids = @{}
 foreach ($pf in @(Get-ChildItem -LiteralPath $ProfileListKey -ErrorAction SilentlyContinue)) {
     $sid  = $pf.PSChildName
     $path = $null
-    try { $path = (Get-ItemProperty -LiteralPath $pf.PSPath -ErrorAction Stop).ProfileImagePath } catch { }
+    $path = Get-RegValue -Path $pf.PSPath -Name 'ProfileImagePath'
     $knownSids[$sid] = $path
 }
 Write-Log ("Profiles present on this machine: {0}" -f $knownSids.Count)
@@ -240,7 +281,7 @@ foreach ($dcKey in $dcKeys) {
     }
 
     $clsid = $null
-    try { $clsid = (Get-ItemProperty -LiteralPath $keyPath -ErrorAction Stop).NamespaceCLSID } catch { }
+    $clsid = Get-RegValue -Path $keyPath -Name 'NamespaceCLSID'
 
     $hasProfile = $knownSids.ContainsKey($sid)
 
@@ -301,9 +342,10 @@ $toRemove = @($orphaned + $incomplete)
 
 Write-Log ("{0} registration(s) will be removed." -f $toRemove.Count) 'ACTION'
 
-if ($DryRun) {
-    Write-Log "DRY RUN - stopping here. No backup taken, no changes made, no restart." 'SKIP'
-    exit 0
+if ($WhatIfPreference) {
+    Write-Log "WHAT IF - no backup taken, no changes made, no restart." 'SKIP'
+    Write-Log "THIS MACHINE NEEDS THE REPAIR. Re-run without -WhatIf to apply it." 'ACTION'
+    exit 4
 }
 
 #--------------------------------------------------------------------------------------
@@ -334,6 +376,11 @@ Start-Sleep -Seconds 3
 # Remove the offending registrations and their shell namespace entries
 #--------------------------------------------------------------------------------------
 foreach ($c in $toRemove) {
+
+    if (-not $PSCmdlet.ShouldProcess($c.KeyName, 'Remove sync root registration and its shell namespace entries')) {
+        Write-Log ("Declined at -Confirm prompt, leaving in place: {0}" -f $c.KeyName) 'SKIP'
+        continue
+    }
 
     Write-Log ("Removing [{0}] {1}" -f $c.Verdict, $c.KeyName) 'ACTION'
 
@@ -419,14 +466,18 @@ if ($NoRestart) {
 
 Write-Log ("Restarting in {0} seconds." -f $RestartDelaySeconds) 'ACTION'
 $msg = "IT maintenance: Autodesk Desktop Connector is being repaired. This computer will restart in $([math]::Round($RestartDelaySeconds/60,1)) minute(s). Please save your work."
-& shutdown.exe /r /t $RestartDelaySeconds /c "$msg" /d p:4:1 | Out-Null
+if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Restart in $RestartDelaySeconds seconds")) {
+    & shutdown.exe /r /t $RestartDelaySeconds /c "$msg" /d p:4:1 | Out-Null
+} else {
+    Write-Log "Restart declined. The repair takes effect after the next restart." 'WARN'
+}
 exit 3
 
 # SIG # Begin signature block
 # MIIobgYJKoZIhvcNAQcCoIIoXzCCKFsCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCC3aEnJGe7TtUxo
-# robtK5szfzZOYwV137dWseSJqjQufKCCIWswggWNMIIEdaADAgECAhAOmxiO+dAt
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDRtByFl70LT7Gs
+# 0EHDHPDsOOISXYJO/61bxf5rD+BxuKCCIWswggWNMIIEdaADAgECAhAOmxiO+dAt
 # 5+/bUOIIQBhaMA0GCSqGSIb3DQEBDAUAMGUxCzAJBgNVBAYTAlVTMRUwEwYDVQQK
 # EwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xJDAiBgNV
 # BAMTG0RpZ2lDZXJ0IEFzc3VyZWQgSUQgUm9vdCBDQTAeFw0yMjA4MDEwMDAwMDBa
@@ -610,33 +661,33 @@ exit 3
 # QTM4NCAyMDIxIENBMQIQA+/B299oHI64Z9WzTdGMfjANBglghkgBZQMEAgEFAKCB
 # hDAYBgorBgEEAYI3AgEMMQowCKACgAChAoAAMBkGCSqGSIb3DQEJAzEMBgorBgEE
 # AYI3AgEEMBwGCisGAQQBgjcCAQsxDjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJ
-# BDEiBCBc+B7r5TU/RkDHiE8G1WY7L0BpV6r2yEz1I4vP3j+duzANBgkqhkiG9w0B
-# AQEFAASCAgDe98g6OFPI6AcNhEas+Ic4PY+Z70NLnVAoCRDjqHqYbE0me8djY/+b
-# JV7ob2UfFQyl7dNUOgwvwRR7qdxluZGrEIT7FiDugZ5nazk2av61B0Rctodjnn47
-# 7q1IYSp7ppexlo9ieavkiUtjHnp3mP2LV1ti0GdiiDiBcQelGKkw83A15Z/AWiOy
-# 87DzpQi84A4AcGZbVyumI7G8Ob7oRSg5ZhzyE8B8spagKhZJMWDYTW0JHaB9VVY1
-# tVFteCl3NrKs589SsU58z1n31fAnbcBvmllLLPFYAPh1InPAjdRC6Ph0uicp3fA7
-# Sk4g+vOF+XrTeRtxDT2Jjn9txEHg5CMCdyqvesXQtB9nv+jZwvqWyVNaDHumGu24
-# wNk/F0rO+HkvQrfVwP7sa8OGaMYkcywQgu/auC2IwWGIAOUO2Sq+tu7IwgZ5cR7l
-# iWPlX4edIYoheIvPPFWzCsKjQpFqkMYjKFjbxeREIUA+0S96LT3X+e1yP21uNhQk
-# tTS3TplKpSKhauMq2oWcgs+T/+kYo+A6xOYFOYFuohJbKsjVVqo8YdyuF9fEi5yR
-# 4NpfOTZWvJfA7SXYYl+gtddNqH/t1m9OQjpICCDq1a2+h0A9hD2y5OTEN0+TgwZW
-# ROiHfp6vhLxvKClYbWjLau8gOKpPItjuXSGgjhYYJjSt6llP8tlRPKGCAyYwggMi
+# BDEiBCCQEx+SZUb/7fCL5Cc1nsAmYpGPgbxFnARKhZUmFd1YsTANBgkqhkiG9w0B
+# AQEFAASCAgAMtsZX8R0BIt9UcyCaeqS09uXA+83VVntjBDk3qmxPo9BYfQAan05N
+# XozUBlIaL5HEdYZp5lvJ6BCn2LjlActgXQqcN+cX0p1eiHWWptzEznKSE2ZbTxN8
+# /UiiqMd2cI7k7j/8aCWV6w4JbBRsihX3VYlhmhcIVZ0DAQlUAH/EWg9dcO3P51CU
+# Lhr5MFRVqRJeoFf50CHnJVjIGG8pkmWGvLEnK4iohG9gEsSaOOfRBDnxv/egLlAi
+# 6Y4R/X43C99HWrtaYnWjJ/CYAqs8FVOlrlovZ21MA77YmLEaKOXAytgXvan4j8So
+# Jv4jLBXPGD75caDJnVP9O0f/mW1mr6UAvZcdRg2Fum/EFFSf7cgy9J0AZVmVbMDJ
+# sPaH4uIuHE2preaWA8WLyy23EmQi4N81qTIx5gKdR0TvM+6wbW51Xi/Hi5VVBHYz
+# oBiT7pA8Bpho8cAnU9jjgaeJJkmUoMlW0ljWCKGrJisIJMo00xc2L6p0Y3p8JotW
+# 9EE8vnJNMF683rlCRTQSA5etUcMHUPjq1/D6+aD+i6oMbSZatwxgS5bZ9OulicvL
+# bM6cNiIb0zV18VCsCUssX1MF686fF1wD1Z24YUoAxK7UKBQ9NmlL0IW8AWLocKMw
+# faTTyP9DLM0Ha0e3ae93StGK0NADYTp7okCI/PwX8uJ2ImF0NlsBYqGCAyYwggMi
 # BgkqhkiG9w0BCQYxggMTMIIDDwIBATB9MGkxCzAJBgNVBAYTAlVTMRcwFQYDVQQK
 # Ew5EaWdpQ2VydCwgSW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQgVHJ1c3RlZCBHNCBU
 # aW1lU3RhbXBpbmcgUlNBNDA5NiBTSEEyNTYgMjAyNSBDQTECEAhP3DNPfkVO28MP
 # j/mSGDUwDQYJYIZIAWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMxCwYJKoZIhvcNAQcB
-# MBwGCSqGSIb3DQEJBTEPFw0yNjA5MTgxNTUyMjBaMC8GCSqGSIb3DQEJBDEiBCBW
-# e/GGd0SCmDr0RTospVpFDS2MJw8VialOJxfg7LuTNjANBgkqhkiG9w0BAQEFAASC
-# AgCoJSB48FItNcERE5eJ9Ed0uKselqraN027kpWviBFl4+cbmAOmtZbfqIUXAKJA
-# QmCAGv1corjjV2NhMs7u1OmFaFbLJYEJSxnL10PXRanQkdapdQdROeOk789jxXJo
-# h2WgbtBz3BNBXOH3k9e8sKqZZgG6xKncgn5KuwSk8OtvVhrNC8eM0D9koJFxwmWu
-# SpSzYLdMawg0VoWdxfsagpxFQFhN/KUOhjaYnzoiSttN158H+rpuWH6/VKK3PYCZ
-# dkq7Vq6bTXaQgeysFQurPXG3Jzi0MqSloYCrK4HQ7ySCA87vL7uyBVzp2y9Oj6UJ
-# 89UlIBs75ktHCXiEcDdM//ZW3Ok9W4gZLBys5F5Iuzjstx2D2QTEkF7J474Kk1Xo
-# nh6xPI6hghgd2B3VUWm1BR7i9Gt49AhelxP4Suktgn5czl3ENUZtAoWzkyVmbbMC
-# gNhgZdZP3jGOOd13jPOdxouZcJFmfOr4kWMMMXfrBFGZeZuqgIafepGpPVODz2Xq
-# yzLZxo1GfGZWWHW2pkI1alK2Qn7giWsjTYpxf0pLCgvXCRWraUQOQGNa6FAbYbQI
-# o7h8eVu9gI3R5eYVyq4Qb7rYOJL+ynvZ97BMRSnzee7bqUbFHJgq+NtWHmQwsFJA
-# 5dDCmfp2yucTuwfOCy1rZxPRg++fS3vRlqQZFGHFvwCWSA==
+# MBwGCSqGSIb3DQEJBTEPFw0yNjA5MTgyMTIwNTBaMC8GCSqGSIb3DQEJBDEiBCBg
+# NITREePo7OQibHAZAbxI8Ks7LYdrx/iaqnsQRzvcfzANBgkqhkiG9w0BAQEFAASC
+# AgAPQO3g+xO+tNbKo6lStN0HUlhXHNFX0yhfIXAkTF13Pggwjd3eMg3FwG4dny7w
+# lOB2sxTvyeFCslG336OUHr7z4nwsABr0cPT2v1P85u19Q2ifJOHxOYQ4G+OPQ2XH
+# dPUviHj/7yTgDxOTTw/8QVk7IEp/kq06bnc3YbVPo9T4pKSKuod60O6EqUJUjffG
+# vgnZJlf8u8XGphDjLkICa/dZ70VUbqfvU7lm5fp2T2/pAyEjhs7FyjiN3MOOGGZE
+# EYrKpw/rNgHSgNcHc0TfsE18YH3Hx0yu0PHClO5C0dveZlvW8pVGIlFAoqkRGGJE
+# XX8LklGA+jxFlQ0Ccjpkc2FFzt4QXyIi07IleuJlXuIXZoWJIm8mp5YLgFGK06Bk
+# B8SsSXaDVVCtrZOALn6EKQs9ERFyN7wHr/4rBdmc2ztj83nhoeBnW/u/zXzdVZ99
+# kx+S2pp3bUUzlAOMP3DX0Q52chepxpx8k5Up0e+NFddNY42O8BDF0qQ3vRDyHeNX
+# X5nethkVFVgUdtqRaB/+hNoHID5BFTwGQo2L7WFvIW9k4KDIxqiQUglPO4h3aWDp
+# G9VlbULasIxyJR9/t5VscPyNXvILEcFUDV0TDRVXGZ+5v+vxuamLlamrFPOkLgor
+# 1+HH5MCAYJFwsxY5tGh6rehF5tFGDnW4qTxOJ/xhDsXuTw==
 # SIG # End signature block
