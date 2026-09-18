@@ -155,6 +155,35 @@ Server, including Exchange Server SE); at least one of `Get-Mailbox` or
 
 ---
 
+### [Repair-BCDesktopConnectorSyncRoot](https://github.com/bricomp-it/bricomp-public/blob/main/shared/utils/Repair-BCDesktopConnectorSyncRoot)
+
+Repairs Autodesk Desktop Connector "Unable to register drive" startup failures
+caused by orphaned Windows Cloud Files API sync root registrations — the state
+left behind when a machine's user SID changes, such as an Entra-joined device
+migrated to on-premises Active Directory. Creating a new Windows profile does
+not fix this; the stale registration lives in `HKLM` and is keyed by SID.
+
+**Key features:**
+
+- Classifies every Desktop Connector sync root as `ORPHANED`, `INCOMPLETE`
+  or `HEALTHY`, and removes only the first two
+- No-op on healthy machines — makes no changes and does not restart
+- Exports the entire `SyncRootManager` key to a `.reg` backup first, and
+  aborts if that backup cannot be written
+- Touches only `DesktopConnector!*` keys — OneDrive and other cloud
+  providers are left untouched
+- Clears orphaned Explorer shell namespace entries from every loaded user hive
+- `-DryRun` to preview, `-NoRestart` to leave the reboot to your RMM
+- Distinct exit codes for RMM/SCCM use, and a `Run-Repair.cmd` launcher that
+  self-elevates for non-technical staff
+
+**Requirements:** PowerShell 5.1+, Windows 10/11, run as Administrator,
+Autodesk Desktop Connector installed
+
+**[Full documentation and usage guide](https://github.com/bricomp-it/bricomp-public/blob/main/shared/utils/Repair-BCDesktopConnectorSyncRoot/README.md)**
+
+---
+
 ## Usage
 
 ### Download a script
