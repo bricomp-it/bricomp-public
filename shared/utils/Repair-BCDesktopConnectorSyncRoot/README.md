@@ -1,6 +1,6 @@
 # Repair-BCDesktopConnectorSyncRoot
 
-**Version:** 1.1.3  
+**Version:** 1.1.4  
 **Author:** BriComp IT Consulting Services — [bricomp.com](https://bricomp.com)
 
 Repairs Autodesk Desktop Connector "Unable to register drive" startup failures caused by orphaned Windows Cloud Files API sync root registrations — the failure mode left behind when a machine's user SID changes, such as an Entra-joined device migrated to on-premises Active Directory.

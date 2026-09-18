@@ -2,7 +2,7 @@
 REM ============================================================================
 REM  Repair-BCDesktopConnectorSyncRoot - launcher
 REM  BriComp IT Consulting Services   https://bricomp.com
-REM  Version 1.1.3
+REM  Version 1.1.4
 REM
 REM  HOW TO USE
 REM    Right-click this file and choose "Run as administrator".
@@ -44,13 +44,10 @@ if %errorlevel% neq 0 (
     REM -ArgumentList must be omitted entirely when there is no argument.
     REM Passing an empty string fails with "Cannot validate argument on parameter
     REM 'ArgumentList'", which is what a plain double-click used to hit.
-    if "%~1"=="" (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-            "Start-Process -FilePath '%~f0' -Verb RunAs"
-    ) else (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-            "Start-Process -FilePath '%~f0' -ArgumentList '%~1' -Verb RunAs"
-    )
+    REM Single lines on purpose: a caret continuation inside a nested block is a
+    REM well known batch parsing trap.
+    if "%~1"=="" powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    if not "%~1"=="" powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '%~1' -Verb RunAs"
     exit /b 0
 )
 
