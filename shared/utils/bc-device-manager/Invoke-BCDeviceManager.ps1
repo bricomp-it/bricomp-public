@@ -1,3 +1,4 @@
+# PUBLISH: true
 #Requires -Version 7.0
 <#
 .SYNOPSIS

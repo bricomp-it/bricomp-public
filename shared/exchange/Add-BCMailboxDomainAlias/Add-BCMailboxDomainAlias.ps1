@@ -1,3 +1,4 @@
+# PUBLISH: true
 <#
 .SYNOPSIS
     Adds a domain-based alias address to on-premises Exchange mailboxes and hybrid

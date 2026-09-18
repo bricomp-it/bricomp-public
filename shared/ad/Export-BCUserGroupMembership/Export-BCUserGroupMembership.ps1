@@ -1,4 +1,5 @@
 #Requires -Modules ActiveDirectory
+# PUBLISH: true
 <#
 .SYNOPSIS
     Exports AD user accounts and group memberships to CSV.
